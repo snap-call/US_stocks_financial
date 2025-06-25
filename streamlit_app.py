@@ -80,10 +80,10 @@ elif page == "재무제표 보기":
 
     # 분위수 방향 (True: 낮을수록 좋음, False: 높을수록 좋음)
     ascending_metrics = {
-        'PER': True, 'PBR': True,
-        'ROE': False, 'ROA': False,
-        'D/E': True, 'CR': False,
-        'EV/FCF': True, 'DY': False
+        'PER': False, 'PBR': False,
+        'ROE': True, 'ROA': True,
+        'D/E': False, 'CR': True,
+        'EV/FCF': False, 'DY': True
     }
 
     # 색상 정의 (1분위 ~ 4분위)

@@ -1,9 +1,5 @@
 streamlit
-finnhub-python
 pandas
-python-dotenv
 gspread
 google-auth
-google-auth-oauthlib
-google-api-python-client
-yfinance
+finnhub-python

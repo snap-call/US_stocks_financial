@@ -284,7 +284,6 @@ elif page == "주식 감시":
     # ✅ 감시 목록 로드
     watch_tickers = load_watch_tickers()
     
-    st.write(", ".join(watch_tickers) if watch_tickers else "없음")
 
     # 📊 현재가 정보 표 만들기
     data = []

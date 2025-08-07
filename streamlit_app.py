@@ -24,6 +24,21 @@ client_gs = gspread.authorize(credentials)
 sheet = client_gs.open("streamlit_tickers").sheet1
 
 # --- 유틸 함수 ---
+def get_quote_with_retry(ticker, max_retries=5, delay=10):
+    for attempt in range(max_retries):
+        try:
+            quote = client.quote(ticker)
+            # 응답이 유효한지 확인
+            if quote and 'c' in quote and quote['c'] != 0:
+                return quote
+            else:
+                raise ValueError(f"{ticker} 응답 없음 또는 현재가가 0입니다.")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                st.warning(f"{ticker} 재시도 {attempt + 1}/{max_retries} - 10초 대기 중...")
+                time.sleep(delay)
+            else:
+                raise RuntimeError(f"{ticker} 호출 실패: {e}")
 def load_tickers():
     return sheet.get_all_records()
 
@@ -242,8 +257,7 @@ elif page == "티커 추가":
         except:
             st.error("형식이 잘못되었습니다. 예: AAPL, Information Technology")
 
-    st.write("현재 티커 목록:")
-    grouped = defaultdict(list)
+
     for t in tickers:
         grouped[t["sector"]].append(t["ticker"])
 
@@ -254,7 +268,8 @@ elif page == "티커 추가":
 
 elif page == "주식 감시":
     st.title("👀 주식 감시")
-    
+
+    # 📌 티커 추가
     new_watch_ticker = st.text_input("감시할 티커 입력 (예: AAPL)")
     if st.button("감시 티커 추가"):
         ticker = new_watch_ticker.strip().upper()
@@ -266,14 +281,17 @@ elif page == "주식 감시":
         else:
             st.error("티커를 올바르게 입력해주세요.")
 
+    # ✅ 감시 목록 로드
     watch_tickers = load_watch_tickers()
-
     st.write("※ 현재 감시할 티커 목록:")
     st.write(", ".join(watch_tickers) if watch_tickers else "없음")
+
+    # 📊 현재가 정보 표 만들기
     data = []
     existing = sheet.get_all_values()
     first_row = existing[0]
     second_row = existing[1] if len(existing) > 1 else []
+
     for col_idx in range(3, len(first_row)):
         ticker = first_row[col_idx].strip()
         if not ticker:
@@ -282,58 +300,63 @@ elif page == "주식 감시":
         try:
             target_price_str = second_row[col_idx].strip() if col_idx < len(second_row) else ""
             if not target_price_str:
-                continue  # 목표가가 비어있으면 건너뛰기
+                continue
 
             target_price = float(target_price_str)
-            quote = client.quote(ticker)
-            current_price = quote['c']
-            gap_percent = (current_price - target_price) / target_price * 100
 
-            # 색상 조건
-            if abs(gap_percent) > 10:
-                color = '⬜️'
-            elif abs(gap_percent) > 5:
-                color = '🟩'
-            elif abs(gap_percent) > 2.5:
-                color = '🟨'
-            else:
-                color = '🟧'
+            try:
+                quote = get_quote_with_retry(ticker)  # ✅ 재시도 함수 사용
+                current_price = quote['c']
+                gap_percent = (current_price - target_price) / target_price * 100
 
-            data.append({
-                "티커": ticker,
-                "목표가": target_price,
-                "현재가": round(current_price, 2),
-                "괴리율 (%)": round(gap_percent, 2),
-                "상태": color
-            })
+                # 색상 조건
+                if abs(gap_percent) > 10:
+                    color = '⬜️'
+                elif abs(gap_percent) > 5:
+                    color = '🟩'
+                elif abs(gap_percent) > 2.5:
+                    color = '🟨'
+                else:
+                    color = '🟧'
+
+                data.append({
+                    "티커": ticker,
+                    "목표가": target_price,
+                    "현재가": round(current_price, 2),
+                    "괴리율 (%)": round(gap_percent, 2),
+                    "상태": color
+                })
+
+            except Exception as e:
+                st.error(f"{ticker} 처리 실패: {e}")
 
         except ValueError:
-            st.warning(f"{ticker}의 목표가가 숫자가 아닙니다: '{target_price_str}'")
-        except Exception as e:
-            st.error(f"{ticker} 처리 실패: {e}")
+            st.warning(f"{ticker}의 목표가 값이 올바르지 않습니다. (예: '{target_price_str}')")
 
-    df = pd.DataFrame(data)
-    st.dataframe(df)
+    # 📊 표 출력
+    if data:
+        df = pd.DataFrame(data)
+        st.dataframe(df)
+    else:
+        st.info("표시할 데이터가 없습니다.")
+
+    # 🎯 목표가 수정
     st.subheader("🎯 목표가 수정")
-
-    # 감시 중인 티커 목록 불러오기
-    watch_tickers = load_watch_tickers()
-
     if watch_tickers:
-        selected_ticker = st.selectbox("목표가를 수정할 티커를 선택하세요", watch_tickers)
-        new_price = st.number_input("새로운 목표가 입력", min_value=0.0, step=1.0, format="%.2f")
-
+        selected_ticker = st.selectbox("목표가를 수정할 티커 선택", watch_tickers)
+        new_price = st.number_input("새 목표가 입력", min_value=0.0, step=1.0, format="%.2f")
         if st.button("목표가 수정"):
             if save_target_price_to_sheet(selected_ticker, new_price):
                 st.success(f"{selected_ticker}의 목표가가 {new_price}으로 수정되었습니다.")
             else:
                 st.error("수정 실패: 해당 티커를 찾을 수 없습니다.")
     else:
-        st.write("감시 중인 티커가 없습니다. 먼저 티커를 추가해주세요.")
-    st.subheader("🗑️ 티커 삭제")
+        st.write("감시 중인 티커가 없습니다.")
 
+    # 🗑️ 티커 삭제
+    st.subheader("🗑️ 티커 삭제")
     if watch_tickers:
-        ticker_to_delete = st.selectbox("삭제할 티커를 선택하세요", watch_tickers)
+        ticker_to_delete = st.selectbox("삭제할 티커 선택", watch_tickers)
         if st.button("티커 삭제"):
             if delete_ticker_from_sheet(ticker_to_delete):
                 compact_watch_tickers()

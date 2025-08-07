@@ -265,7 +265,6 @@ elif page == "티커 추가":
         with st.expander(f"{sector} ({len(grouped[sector])}개)"):
             for t in grouped[sector]:
                 st.write(f"- {t}")
-
 elif page == "주식 감시":
     st.title("👀 주식 감시")
 
@@ -283,7 +282,6 @@ elif page == "주식 감시":
 
     # ✅ 감시 목록 로드
     watch_tickers = load_watch_tickers()
-    
 
     # 📊 현재가 정보 표 만들기
     data = []
@@ -298,10 +296,10 @@ elif page == "주식 감시":
 
         try:
             target_price_str = second_row[col_idx].strip() if col_idx < len(second_row) else ""
-            if not target_price_str:
-                continue
-
             target_price = float(target_price_str)
+            if target_price <= 0:
+                st.warning(f"{ticker} 목표가가 0 이하입니다. 건너뜁니다.")
+                continue  # <-- 이 위치가 맞아요
 
             try:
                 quote = get_quote_with_retry(ticker)  # ✅ 재시도 함수 사용

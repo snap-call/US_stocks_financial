@@ -24,7 +24,7 @@ client_gs = gspread.authorize(credentials)
 sheet = client_gs.open("streamlit_tickers").sheet1
 
 # --- 유틸 함수 ---
-def get_quote_with_retry(ticker, max_retries=5, delay=10):
+def get_quote_with_retry(ticker, max_retries=6, delay=10):
     for attempt in range(max_retries):
         try:
             quote = client.quote(ticker)
@@ -51,16 +51,32 @@ def save_ticker_to_sheet(new_ticker, new_sector):
 
 # -- 감시 티커, 목표가 세로 저장 방식 --
 
-def save_watch_ticker_to_sheet(new_ticker, target_price=""):
+def save_watch_ticker_to_sheet(new_ticker):
     existing = sheet.get_all_values()
-    tickers_col = [row[3] if len(row) > 3 else "" for row in existing]  # D열 티커 리스트
-
-    if new_ticker in tickers_col:
-        return False  # 이미 존재
-
-    row_idx = len(tickers_col) + 1  # 1-based index, 헤더 포함
-    sheet.update(f'D{row_idx}', [[new_ticker]])
-    sheet.update(f'E{row_idx}', [[target_price]])
+    col_idx = 3  # D열 인덱스 (0-based)
+    
+    # D열 데이터 추출 (첫 행 제외하고 세로로)
+    col_values = []
+    for row in existing[1:]:  # 1행은 헤더니까 제외
+        if len(row) > col_idx:
+            col_values.append(row[col_idx].strip())
+        else:
+            col_values.append("")  # 빈 셀
+    
+    # 이미 존재하는 티커인지 체크
+    if new_ticker in col_values:
+        return False
+    
+    # D열에서 마지막 값이 있는 행 번호 찾기 (1-based)
+    last_filled_row = 1  # 헤더가 1행이므로 최소 1부터 시작
+    for i, val in enumerate(col_values, start=2):  # 실제 시트 행 번호
+        if val:
+            last_filled_row = i
+    
+    # 새 티커를 다음 행에 추가
+    append_row_index = last_filled_row + 1
+    cell = f'D{append_row_index}'
+    sheet.update(cell, [[new_ticker]])
     return True
 
 def load_watch_tickers():
@@ -134,7 +150,91 @@ if page == "홈":
 elif page == "재무제표 보기":
     st.title("📊 재무제표 보기")
 
-    # ... (기존 재무제표 보기 코드 유지) ...
+    metrics_pairs = {
+        'PER': ('peAnnual', 'peTTM'),
+        'PBR': ('pbAnnual', None),
+        'ROE': ('roeRfy', 'roeTTM'),
+        'ROA': ('roaRfy', 'roaTTM'),
+        'D/E': ('totalDebt/totalEquityAnnual', None),
+        'CR': ('currentRatioAnnual', None),
+        'EV/FCF': ('currentEv/freeCashFlowAnnual', 'currentEv/freeCashFlowTTM'),
+        'DY': ('dividendYieldIndicatedAnnual', None),
+    }
+
+    ascending_metrics = {
+        'PER': False, 'PBR': False,
+        'ROE': True, 'ROA': True,
+        'D/E': False, 'CR': True,
+        'EV/FCF': False, 'DY': True,
+    }
+
+    sector_to_tickers = defaultdict(list)
+    for item in tickers:
+        sector_to_tickers[item["sector"]].append(item["ticker"])
+
+    def highlight_quartile(series, ascending=True):
+        clean_series = pd.to_numeric(series.str.extract(r'([\-\d\.]+)')[0], errors='coerce')
+        try:
+            valid = clean_series.dropna()
+            quartiles = pd.qcut(valid.rank(method='first', ascending=ascending), 4, labels=False)
+            colors = [''] * len(series)
+            for idx, q in zip(valid.index, quartiles):
+                colors[idx] = f'background-color: {["#ff8e88", "#f3e671", "#91bfdb", "#87ffbb"][q]}'
+            return colors
+        except:
+            return [''] * len(series)
+
+    total = sum(len(tks) for tks in sector_to_tickers.values())
+    k = 0
+    progress_bar = st.progress(0.0)
+    status_text = st.empty()
+    error_text = st.empty()
+
+    for sector, tickers_ in sector_to_tickers.items():
+        data_for_pd = []
+        for ticker in tickers_:
+            retries = 0
+            max_retries = 5
+            while retries < max_retries:
+                try:
+                    data = client.company_basic_financials(ticker, 'all')
+                    if 'metric' not in data:
+                        break
+                    metric_data = data['metric']
+                    row = {"Ticker": ticker}
+                    for metric, (annual_key, ttm_key) in metrics_pairs.items():
+                        val = None
+                        flag = ''
+                        if ttm_key and metric_data.get(ttm_key) is not None:
+                            val = metric_data[ttm_key]
+                            flag = '(t)'
+                        elif annual_key and metric_data.get(annual_key) is not None:
+                            val = metric_data[annual_key]
+                            flag = '(a)'
+                        row[metric] = f"{round(val, 2)} {flag}" if val is not None else None
+                    data_for_pd.append(row)
+                    time.sleep(0.12)
+                    break
+                except Exception as e:
+                    retries += 1
+                    error_text.warning(f"❌ {ticker} 에러: {e} (재시도 {retries}/{max_retries})")
+                    time.sleep(10)
+
+            k += 1
+            progress_bar.progress(k / total)
+            status_text.text(f"✅ {ticker} 처리 완료 ({k}/{total})")
+
+        if data_for_pd:
+            df = pd.DataFrame(data_for_pd)
+            styled_df = df.style
+            for metric in metrics_pairs:
+                styled_df = styled_df.apply(
+                    highlight_quartile,
+                    subset=[metric],
+                    ascending=ascending_metrics[metric]
+                )
+            st.subheader(f"📍 {sector}")
+            st.dataframe(styled_df, use_container_width=True)
 
 elif page == "티커 추가":
     st.title("➕ 티커 추가")

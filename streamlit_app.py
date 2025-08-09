@@ -257,7 +257,7 @@ elif page == "티커 추가":
         except:
             st.error("형식이 잘못되었습니다. 예: AAPL, Information Technology")
 
-
+    grouped = defaultdict(list)
     for t in tickers:
         grouped[t["sector"]].append(t["ticker"])
 

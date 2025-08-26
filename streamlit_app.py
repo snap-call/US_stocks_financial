@@ -144,11 +144,11 @@ tickers = load_tickers()
 sector_list = sorted(set([t["sector"] for t in tickers]))
 
 if page == "홈":
-    st.title("📈 주식 티커 재무제표 뷰어")
-    st.write("환영합니다!")
+    st.title("주식 티커 재무제표 뷰어")
+   
 
 elif page == "재무제표 보기":
-    st.title("📊 재무제표 보기")
+    st.title("재무제표 보기")
 
     metrics_pairs = {
         'PER': ('peAnnual', 'peTTM'),
@@ -233,11 +233,11 @@ elif page == "재무제표 보기":
                     subset=[metric],
                     ascending=ascending_metrics[metric]
                 )
-            st.subheader(f"📍 {sector}")
+            st.subheader(f"{sector}")
             st.dataframe(styled_df, use_container_width=True)
 
 elif page == "티커 추가":
-    st.title("➕ 티커 추가")
+    st.title(" 티커 추가")
 
     st.write("현재 등록된 섹터:")
     with st.expander("보기"):
@@ -265,9 +265,9 @@ elif page == "티커 추가":
                 st.write(f"- {t}")
 
 elif page == "주식 감시":
-    st.title("👀 주식 감시")
+    st.title("주식 감시")
 
-    # 📌 티커 추가
+    # 티커 추가
     new_watch_ticker = st.text_input("감시할 티커 입력 (예: AAPL)")
     if st.button("감시 티커 추가"):
         ticker = new_watch_ticker.strip().upper()
@@ -279,10 +279,10 @@ elif page == "주식 감시":
         else:
             st.error("티커를 올바르게 입력해주세요.")
 
-    # ✅ 감시 목록 로드
+    #  감시 목록 로드
     watch_tickers = load_watch_tickers()
 
-    # 📊 현재가 정보 표 만들기
+    #  현재가 정보 표 만들기
     data = []
     existing = sheet.get_all_values()
 
@@ -333,8 +333,8 @@ elif page == "주식 감시":
     else:
         st.info("표시할 데이터가 없습니다.")
 
-    # 🎯 목표가 수정
-    st.subheader("🎯 목표가 수정")
+    # 목표가 수정
+    st.subheader("목표가 수정")
     if watch_tickers:
         selected_ticker = st.selectbox("목표가를 수정할 티커 선택", watch_tickers)
         new_price = st.number_input("새 목표가 입력", min_value=0.0, step=1.0, format="%.2f")
@@ -346,8 +346,8 @@ elif page == "주식 감시":
     else:
         st.write("감시 중인 티커가 없습니다.")
 
-    # 🗑️ 티커 삭제
-    st.subheader("🗑️ 티커 삭제")
+    # 티커 삭제
+    st.subheader("티커 삭제")
     if watch_tickers:
         ticker_to_delete = st.selectbox("삭제할 티커 선택", watch_tickers)
         if st.button("티커 삭제"):
